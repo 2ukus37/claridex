@@ -1,0 +1,5 @@
+{
+  "name": "ClariDx: Diagnostic Co-pilot",
+  "description": "An AI co-pilot that synthesizes radiology images, clinical notes, and lab data to deliver contextual diagnostic summaries, designed to support, not replace, radiologists.",
+  "requestFramePermissions": []
+}
