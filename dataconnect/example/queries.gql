@@ -1,0 +1,33 @@
+mutation CreateNewClarification @auth(level: USER) {
+  clarification_insert(data: {
+    title: "New Clarification",
+    content: "This is a new clarification.",
+    createdAt_expr: "request.time",
+    updatedAt_expr: "request.time",
+    userId_expr: "auth.uid"
+  })
+}
+
+query ListPublicClarifications @auth(level: PUBLIC) {
+  clarifications(where: {isPublic: {eq: true}}) {
+    id
+    title
+    content
+    createdAt
+    updatedAt
+  }
+}
+
+mutation UpdateClarificationContent($id: UUID!, $content: String!) @auth(level: USER) {
+  clarification_update(key: {id: $id}, data: {content: $content, updatedAt_expr: "request.time"})
+}
+
+query ListClarificationsByUser @auth(level: USER) {
+  clarifications(where: {userId: {eq_expr: "auth.uid"}}) {
+    id
+    title
+    content
+    createdAt
+    updatedAt
+  }
+}

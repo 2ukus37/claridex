@@ -1,0 +1,59 @@
+type User @table {
+  displayName: String!
+  createdAt: Timestamp!
+  email: String
+  photoUrl: String
+  bio: String
+}
+
+type Clarification @table {
+  title: String!
+  content: String!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+  user: User
+  isPublic: Boolean
+  category: String
+  multimediaUrl: [String]
+}
+
+type Tag @table {
+  name: String!
+  description: String
+}
+
+type ClarificationTag @table(key: ["clarification", "tag"]) {
+  clarification: Clarification!
+  tag: Tag!
+}
+
+type LinkedClarification @table(key: ["sourceClarification", "targetClarification"]) {
+  sourceClarification: Clarification!
+  targetClarification: Clarification!
+  createdAt: Timestamp!
+  linkType: String
+}
+
+type Comment @table {
+  content: String!
+  createdAt: Timestamp!
+  user: User
+  clarification: Clarification
+  parentCommentId: UUID
+}
+
+type StudySet @table {
+  name: String!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+  user: User
+  description: String
+  isPublic: Boolean
+}
+
+type StudySetClarification @table(key: ["studySet", "clarification"]) {
+  studySet: StudySet!
+  clarification: Clarification!
+  orderInSet: Int
+  isMastered: Boolean
+}

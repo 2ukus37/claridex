@@ -1,0 +1,8 @@
+mutation SeedData @auth(level: USER) {
+  tag_upsertMany(data: [
+    { name: "science", description: "Related to scientific topics" },
+    { name: "technology", description: "Related to technological topics" },
+    { name: "engineering", description: "Related to engineering topics" },
+    { name: "mathematics", description: "Related to mathematical topics" }
+  ])
+}
