@@ -1,29 +1,41 @@
 import React, { useState } from 'react';
 import { LoginPage } from './components/LoginPage';
-import { DoctorDashboard } from './components/DoctorDashboard';
-import { PatientDashboard } from './components/PatientDashboard';
+import { CustomerDashboard } from './components/CustomerDashboard';
+import { DriverDashboard } from './components/DriverDashboard';
+import { RestaurantDashboard } from './components/RestaurantDashboard';
 
-export type UserRole = 'doctor' | 'patient';
+export type UserRole = 'customer' | 'driver' | 'restaurant';
+export type ServiceType = 'ride' | 'food';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  phone?: string;
+  rating?: number;
+}
 
 const App: React.FC = () => {
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
-  const handleLogin = (role: UserRole) => {
-    setUserRole(role);
+  const handleLogin = (userData: User) => {
+    setUser(userData);
   };
 
   const handleLogout = () => {
-    setUserRole(null);
+    setUser(null);
   };
 
-  if (!userRole) {
+  if (!user) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
-      {userRole === 'doctor' && <DoctorDashboard onLogout={handleLogout} />}
-      {userRole === 'patient' && <PatientDashboard onLogout={handleLogout} />}
+    <div className="min-h-screen bg-gray-50">
+      {user.role === 'customer' && <CustomerDashboard user={user} onLogout={handleLogout} />}
+      {user.role === 'driver' && <DriverDashboard user={user} onLogout={handleLogout} />}
+      {user.role === 'restaurant' && <RestaurantDashboard user={user} onLogout={handleLogout} />}
     </div>
   );
 };
