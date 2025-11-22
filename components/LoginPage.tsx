@@ -1,64 +1,190 @@
-import React from 'react';
-import { UserRole } from '../App';
-import { LogoIcon, UserCircleIcon, BeakerIcon } from './IconComponents';
+import React, { useState } from 'react';
+import { User, UserRole } from '../App';
 
 interface LoginPageProps {
-  onLogin: (role: UserRole) => void;
+  onLogin: (user: User) => void;
 }
 
-const RoleCard: React.FC<{
-  role: UserRole;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  onClick: (role: UserRole) => void;
-}> = ({ role, title, description, icon, onClick }) => (
-  <div
-    onClick={() => onClick(role)}
-    className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200 hover:border-indigo-500 hover:shadow-2xl transition-all duration-300 cursor-pointer flex flex-col items-center text-center"
-  >
-    <div className="bg-indigo-100 p-4 rounded-full mb-6">
-      {icon}
-    </div>
-    <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
-    <p className="text-slate-500 mb-6">{description}</p>
-    <button
-        className="w-full mt-auto bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-200"
-    >
-        Login as {title}
-    </button>
-  </div>
-);
-
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+  const [isSignup, setIsSignup] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<UserRole>('customer');
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const user: User = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: formData.name || formData.email.split('@')[0],
+      email: formData.email,
+      role: selectedRole,
+      phone: formData.phone,
+      rating: 5.0,
+    };
+    
+    onLogin(user);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4">
-        <div className="text-center mb-12">
-            <LogoIcon className="h-16 w-16 text-indigo-600 mx-auto mb-4" />
-            <h1 className="text-4xl font-bold text-slate-800 tracking-tight">Welcome to ClariDx</h1>
-            <p className="text-lg text-slate-500 mt-2">Your Multi-Modal Diagnostic Co-pilot</p>
+    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-gray-800 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <h1 className="text-5xl font-bold text-white mb-2">TAKCI</h1>
+          <p className="text-gray-300 text-lg">Ride & Food Delivery</p>
         </div>
 
-        <div className="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-            <RoleCard
-                role="doctor"
-                title="Doctor"
-                description="Access the diagnostic co-pilot, review cases, and consult with patients."
-                icon={<BeakerIcon className="h-10 w-10 text-indigo-600" />}
-                onClick={onLogin}
-            />
-            <RoleCard
-                role="patient"
-                title="Patient"
-                description="Consult with your doctor, share files, and view your case history."
-                icon={<UserCircleIcon className="h-10 w-10 text-indigo-600" />}
-                onClick={onLogin}
-            />
-        </div>
+        {/* Login Card */}
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+            {isSignup ? 'Create Account' : 'Welcome Back'}
+          </h2>
 
-        <footer className="text-center text-slate-500 mt-16 text-sm">
-            <p>&copy; {new Date().getFullYear()} ClariDx. For demonstration purposes only.</p>
-        </footer>
+          {/* Role Selection */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              I am a:
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedRole('customer')}
+                className={`py-3 px-4 rounded-lg font-medium transition-all ${
+                  selectedRole === 'customer'
+                    ? 'bg-black text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Customer
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRole('driver')}
+                className={`py-3 px-4 rounded-lg font-medium transition-all ${
+                  selectedRole === 'driver'
+                    ? 'bg-black text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Driver
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedRole('restaurant')}
+                className={`py-3 px-4 rounded-lg font-medium transition-all ${
+                  selectedRole === 'restaurant'
+                    ? 'bg-black text-white shadow-lg'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Restaurant
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isSignup && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                  placeholder="John Doe"
+                  required={isSignup}
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+
+            {isSignup && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                  placeholder="+1 (555) 000-0000"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors shadow-lg"
+            >
+              {isSignup ? 'Sign Up' : 'Log In'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setIsSignup(!isSignup)}
+              className="text-sm text-gray-600 hover:text-black"
+            >
+              {isSignup
+                ? 'Already have an account? Log in'
+                : "Don't have an account? Sign up"}
+            </button>
+          </div>
+
+          {/* Demo Login Hint */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-600 text-center">
+              💡 Demo: Use any email to login and explore the app
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
