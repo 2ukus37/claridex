@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { Chat, Message } from './Chat';
 import { DiagnosticCopilot } from './DiagnosticCopilot';
 import { SparklesIcon, ChatBubbleLeftRightIcon } from './IconComponents';
+import { messageService } from '../services/messageService';
+import { supabase } from '../services/supabase';
 
 interface PatientDashboardProps {
   onLogout: () => void;
+  userId: string;
 }
 
 const translations: Record<string, any> = {
@@ -66,42 +69,76 @@ const translations: Record<string, any> = {
 };
 
 
-export const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) => {
+export const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, userId }) => {
   const [language, setLanguage] = useState<string>('en');
   const [activeTab, setActiveTab] = useState<'chat' | 'copilot'>('chat');
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 1, text: 'Hello! How can I help you today?', sender: 'other' }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [doctorName, setDoctorName] = useState<string>('Doctor');
 
   const t = translations[language];
 
-  const handleSendMessage = (text: string, file?: File) => {
-    const newMessage: Message = {
-      id: messages.length + 1,
-      text,
-      sender: 'me',
+  // Get the first doctor (in production, patient would select their doctor)
+  useEffect(() => {
+    const loadDoctor = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'doctor')
+        .limit(1);
+
+      if (error) {
+        console.error('Error loading doctor:', error);
+      } else if (data && data.length > 0) {
+        setDoctorId(data[0].id);
+        setDoctorName(data[0].full_name || data[0].email);
+      } else {
+        console.log('No doctors found. Please create a doctor account first.');
+      }
     };
+    loadDoctor();
+  }, []);
 
-    if (file) {
-      newMessage.file = {
-        name: file.name,
-        url: URL.createObjectURL(file),
-        type: file.type,
-      };
+  // Load messages on mount
+  useEffect(() => {
+    const loadMessages = async () => {
+      const msgs = await messageService.getMessages(userId, 'patient', userId);
+      setMessages(msgs);
+    };
+    loadMessages();
+  }, [userId]);
+
+  // Subscribe to message updates
+  useEffect(() => {
+    const unsubscribe = messageService.subscribeToMessages(userId, async () => {
+      const msgs = await messageService.getMessages(userId, 'patient', userId);
+      setMessages(msgs);
+    });
+    return unsubscribe;
+  }, [userId]);
+
+  const handleSendMessage = async (text: string, file?: File) => {
+    if (!doctorId) {
+      console.error('No doctor assigned');
+      return;
     }
-
-    const updatedMessages = [...messages, newMessage];
-    setMessages(updatedMessages);
-
-    // Mock doctor reply
-    setTimeout(() => {
-        let replyText = "Thank you for your message. The doctor will review it shortly.";
-        if (file) {
-            replyText = `The doctor has received your file (${file.name}) and will get back to you soon.`;
-        }
-        setMessages(prev => [...prev, {id: prev.length + 1, text: replyText, sender: 'other'}]);
-    }, 1500);
-
+    
+    try {
+      console.log('Patient sending message:', { 
+        patientId: userId, 
+        doctorId: doctorId, 
+        senderId: userId,
+        text 
+      });
+      await messageService.addMessage(userId, doctorId, userId, text, file);
+      console.log('Patient message sent successfully');
+      // Reload messages after sending
+      const msgs = await messageService.getMessages(userId, 'patient', userId);
+      console.log('Patient reloaded messages:', msgs);
+      setMessages(msgs);
+    } catch (error) {
+      console.error('Patient failed to send message:', error);
+    }
   };
 
   return (
@@ -131,13 +168,20 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout }) 
         
         {activeTab === 'chat' && (
             <div className="max-w-4xl mx-auto">
-                <Chat 
-                    messages={messages}
-                    onSendMessage={handleSendMessage}
-                    placeholder="Type your message to Dr. Anderson..."
-                    contactName="Dr. Anderson"
-                    contactStatus="Online"
-                />
+                {!doctorId ? (
+                    <div className="bg-white rounded-xl shadow-md border border-slate-200 p-8 text-center">
+                        <p className="text-slate-600 mb-4">No doctor assigned yet.</p>
+                        <p className="text-sm text-slate-500">Please ask your administrator to create a doctor account, or sign up as a doctor in another browser window.</p>
+                    </div>
+                ) : (
+                    <Chat 
+                        messages={messages}
+                        onSendMessage={handleSendMessage}
+                        placeholder={`Type your message to ${doctorName}...`}
+                        contactName={doctorName}
+                        contactStatus="Online"
+                    />
+                )}
             </div>
         )}
 

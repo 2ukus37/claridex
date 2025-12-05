@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { Chat, Message } from './Chat';
 import { UserGroupIcon, UserCircleIcon, ChatBubbleLeftRightIcon } from './IconComponents';
+import { messageService } from '../services/messageService';
+import { supabase } from '../services/supabase';
 
 interface DoctorDashboardProps {
   onLogout: () => void;
+  userId: string;
 }
 
 const translations: Record<string, any> = {
@@ -31,42 +34,88 @@ const translations: Record<string, any> = {
   }
 };
 
-const mockPatients = [
-    { id: 1, name: 'John Doe', status: 'Online'},
-    { id: 2, name: 'Jane Smith', status: 'Away'},
-    { id: 3, name: 'Robert Brown', status: 'Online'},
-];
+interface Patient {
+  id: string;
+  name: string;
+  status: string;
+}
 
-export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ onLogout }) => {
+export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ onLogout, userId }) => {
   const [language, setLanguage] = useState<string>('en');
-  const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
 
   const t = translations[language];
 
-  const handleSendMessage = (text: string, file?: File) => {
-    const newMessage: Message = {
-      id: messages.length + 1,
-      text,
-      sender: 'me',
-    };
-    if (file) {
-      newMessage.file = {
-        name: file.name,
-        url: URL.createObjectURL(file),
-        type: file.type,
-      };
-    }
-    const updatedMessages = [...messages, newMessage];
-    setMessages(updatedMessages);
+  // Load patients list
+  useEffect(() => {
+    const loadPatients = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'patient');
 
-    // Mock patient reply
-    setTimeout(() => {
-        setMessages(prev => [...prev, {id: prev.length + 1, text: "Thank you for the update, doctor.", sender: 'other'}]);
-    }, 1500);
+      if (error) {
+        console.error('Error loading patients:', error);
+      } else {
+        setPatients((data || []).map(p => ({
+          id: p.id,
+          name: p.full_name || p.email,
+          status: 'Online'
+        })));
+      }
+    };
+    loadPatients();
+  }, []);
+
+  // Load messages when patient is selected
+  useEffect(() => {
+    if (selectedPatientId) {
+      console.log('Doctor selected patient:', selectedPatientId);
+      console.log('Doctor userId:', userId);
+      const loadMessages = async () => {
+        const msgs = await messageService.getMessages(selectedPatientId, 'doctor', userId);
+        setMessages(msgs);
+      };
+      loadMessages();
+    }
+  }, [selectedPatientId, userId]);
+
+  // Subscribe to message updates
+  useEffect(() => {
+    if (!selectedPatientId) return;
+    
+    const unsubscribe = messageService.subscribeToMessages(selectedPatientId, async () => {
+      const msgs = await messageService.getMessages(selectedPatientId, 'doctor', userId);
+      setMessages(msgs);
+    });
+    
+    return unsubscribe;
+  }, [selectedPatientId, userId]);
+
+  const handleSendMessage = async (text: string, file?: File) => {
+    if (!selectedPatientId) return;
+    
+    try {
+      console.log('Doctor sending message to patient:', { 
+        patientId: selectedPatientId, 
+        doctorId: userId, 
+        senderId: userId,
+        text 
+      });
+      await messageService.addMessage(selectedPatientId, userId, userId, text, file);
+      console.log('Doctor message sent successfully');
+      // Reload messages after sending
+      const msgs = await messageService.getMessages(selectedPatientId, 'doctor', userId);
+      console.log('Doctor reloaded messages:', msgs);
+      setMessages(msgs);
+    } catch (error) {
+      console.error('Doctor failed to send message:', error);
+    }
   };
   
-  const selectedPatient = mockPatients.find(p => p.id === selectedPatientId);
+  const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
   return (
     <>
@@ -79,7 +128,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ onLogout }) =>
                     <h2 className="text-lg font-semibold text-slate-700">{t.patientList}</h2>
                 </div>
                 <ul className="space-y-2">
-                    {mockPatients.map(p => (
+                    {patients.map(p => (
                         <li key={p.id}>
                             <button onClick={() => { setSelectedPatientId(p.id); setMessages([]); }} className={`w-full text-left flex items-center p-3 rounded-lg transition-colors ${selectedPatientId === p.id ? 'bg-indigo-100' : 'hover:bg-slate-100'}`}>
                                 <UserCircleIcon className="h-8 w-8 text-slate-400 mr-3"/>

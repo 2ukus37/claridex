@@ -1,11 +1,9 @@
 
-import { GoogleGenAI } from "@google/genai";
-
 if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const OPENROUTER_API_KEY = process.env.API_KEY;
 
 const languageMap: Record<string, string> = {
   en: 'English',
@@ -63,27 +61,49 @@ export const generateDiagnosticSummary = async (
   imagingType: string,
   language: string
 ): Promise<string> => {
-  const imagePart = {
-    inlineData: {
-      mimeType: 'image/jpeg',
-      data: imageBase64,
-    },
-  };
-
-  const textPart = {
-    text: buildPrompt(clinicalNotes, labValues, imagingType, language),
-  };
-
   try {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, textPart] },
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'ClariDx Diagnostic Co-pilot',
+      },
+      body: JSON.stringify({
+        model: 'nvidia/nemotron-nano-12b-v2-vl:free',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: buildPrompt(clinicalNotes, labValues, imagingType, language),
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`,
+                },
+              },
+            ],
+          },
+        ],
+      }),
     });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('OpenRouter API error:', errorData);
+      throw new Error(`API request failed: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || '';
     
-    // Clean up any stray markdown asterisks from the response text
-    return response.text.trim().replace(/\*\*/g, '');
+    return text.trim().replace(/\*\*/g, '');
   } catch (error) {
-    console.error("Gemini API call failed:", error);
+    console.error("OpenRouter API call failed:", error);
     throw new Error("Failed to communicate with the AI model.");
   }
 };
