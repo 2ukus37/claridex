@@ -1,20 +1,49 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img width="1200" height="475" alt="Claridex Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Run and deploy your Claridex app
 
-This contains everything you need to run your app locally.
+Claridex is an AI‑powered assistant that helps you understand, compare, and reason about complex information with clear, structured outputs. It is deployed on Vercel for fast, reliable access and is developed locally using a modern Node.js toolchain.  
 
-View your app in AI Studio: https://ai.studio/apps/drive/1j4ckM39lebedCAXm9BPMlCekD6eCBBNP
+Live app: [**https://claridex-1f35.vercel.app/**](https://claridex-1f35.vercel.app/)  
 
-## Run Locally
+---
 
-**Prerequisites:**  Node.js
+## Run locally
+
+**Prerequisites**
+
+- Node.js (LTS recommended)  
+- A valid API key for your chosen AI provider  
+
+**1. Install dependencies**
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**2. Configure environment variables**
+
+Create a file named `.env.local` in the project root and add your API key:
+
+
+> Even though the variable is named `GEMINI_API_KEY`, you can point it to any compatible backend or proxy you are using from your Kiro‑driven setup, as long as the app expects an OpenAI‑style or Gemini‑style endpoint.
+
+**3. Start the development server**
+
+
+Then open `http://localhost:3000` in your browser to use Claridex locally.
+
+---
+
+## Deploy on Vercel
+
+Claridex is optimized for deployment on Vercel’s AI‑friendly hosting platform.
+
+1. Push this repository to GitHub, GitLab, or Bitbucket.  
+2. Import the project into Vercel and select the appropriate framework preset (for example, Next.js or a compatible React setup).  
+3. In the Vercel project settings, add `GEMINI_API_KEY` under **Environment Variables**, set it to the same value you use locally, and redeploy.  
+
+Your production deployment will be available at a Vercel URL such as:
+
+https://claridex-1f35.vercel.app/
+
+You can optionally attach a custom domain from the Vercel dashboard.
