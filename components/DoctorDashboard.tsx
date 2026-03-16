@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { Chat, Message } from './Chat';
 import { UserGroupIcon, UserCircleIcon, ChatBubbleLeftRightIcon } from './IconComponents';
-import { messageService } from '../services/messageService';
+import { messageService, OnlineUser } from '../services/messageService';
 import { supabase } from '../services/supabase';
 
 interface DoctorDashboardProps {
@@ -11,152 +11,121 @@ interface DoctorDashboardProps {
 }
 
 const translations: Record<string, any> = {
-  en: {
-    headerTitle: 'ClariDx',
-    headerSubtitle: 'Doctor Portal',
-    chatTab: 'Patient Chat',
-    patientList: 'Patients',
-    selectPatient: 'Select a patient to start a conversation.'
-  },
-  es: {
-    headerTitle: 'ClariDx',
-    headerSubtitle: 'Portal del Doctor',
-    chatTab: 'Chat del Paciente',
-    patientList: 'Pacientes',
-    selectPatient: 'Seleccione un paciente para iniciar una conversación.'
-  },
-  fr: {
-    headerTitle: 'ClariDx',
-    headerSubtitle: 'Portail Médecin',
-    chatTab: 'Chat Patient',
-    patientList: 'Patients',
-    selectPatient: 'Sélectionnez un patient pour démarrer une conversation.'
-  }
+  en: { headerTitle: 'ClariDx', headerSubtitle: 'Doctor Portal', patientList: 'Online Patients', selectPatient: 'Select a patient to start a conversation.' },
+  es: { headerTitle: 'ClariDx', headerSubtitle: 'Portal del Doctor', patientList: 'Pacientes en Línea', selectPatient: 'Seleccione un paciente para iniciar una conversación.' },
+  fr: { headerTitle: 'ClariDx', headerSubtitle: 'Portail Médecin', patientList: 'Patients en Ligne', selectPatient: 'Sélectionnez un patient pour démarrer une conversation.' }
 };
 
-interface Patient {
-  id: string;
-  name: string;
-  status: string;
-}
-
 export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ onLogout, userId }) => {
-  const [language, setLanguage] = useState<string>('en');
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [language, setLanguage] = useState('en');
+  const [selectedPatient, setSelectedPatient] = useState<OnlineUser | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-
+  const [onlinePatients, setOnlinePatients] = useState<OnlineUser[]>([]);
   const t = translations[language];
 
-  // Load patients list
+  // Join presence and track as doctor
   useEffect(() => {
-    const loadPatients = async () => {
-      const { data, error } = await supabase
+    const init = async () => {
+      const { data } = await supabase
         .from('users')
-        .select('id, full_name, email')
-        .eq('role', 'patient');
+        .select('full_name, email')
+        .eq('id', userId)
+        .single();
 
-      if (error) {
-        console.error('Error loading patients:', error);
-      } else {
-        setPatients((data || []).map(p => ({
-          id: p.id,
-          name: p.full_name || p.email,
-          status: 'Online'
-        })));
-      }
+      const name = data?.full_name || data?.email || 'Doctor';
+
+      const unsub = messageService.joinPresence(userId, 'doctor', name, (users) => {
+        const patients = users.filter(u => u.role === 'patient' && u.userId !== userId);
+        setOnlinePatients(patients);
+      });
+
+      return unsub;
     };
-    loadPatients();
-  }, []);
+
+    let cleanup: (() => void) | undefined;
+    init().then(fn => { cleanup = fn; });
+    return () => { if (cleanup) cleanup(); };
+  }, [userId]);
 
   // Load messages when patient is selected
   useEffect(() => {
-    if (selectedPatientId) {
-      console.log('Doctor selected patient:', selectedPatientId);
-      console.log('Doctor userId:', userId);
-      const loadMessages = async () => {
-        const msgs = await messageService.getMessages(selectedPatientId, 'doctor', userId);
-        setMessages(msgs);
-      };
-      loadMessages();
-    }
-  }, [selectedPatientId, userId]);
+    if (!selectedPatient) return;
+    const load = async () => {
+      const msgs = await messageService.getMessages(userId, selectedPatient.userId);
+      setMessages(msgs);
+    };
+    load();
+  }, [selectedPatient, userId]);
 
-  // Subscribe to message updates
+  // Subscribe to new messages from selected patient only
   useEffect(() => {
-    if (!selectedPatientId) return;
-    
-    const unsubscribe = messageService.subscribeToMessages(selectedPatientId, async () => {
-      const msgs = await messageService.getMessages(selectedPatientId, 'doctor', userId);
+    if (!selectedPatient) return;
+    const unsub = messageService.subscribeToConversation(userId, selectedPatient.userId, async () => {
+      const msgs = await messageService.getMessages(userId, selectedPatient.userId);
       setMessages(msgs);
     });
-    
-    return unsubscribe;
-  }, [selectedPatientId, userId]);
+    return unsub;
+  }, [selectedPatient, userId]);
 
   const handleSendMessage = async (text: string, file?: File) => {
-    if (!selectedPatientId) return;
-    
+    if (!selectedPatient) return;
     try {
-      console.log('Doctor sending message to patient:', { 
-        patientId: selectedPatientId, 
-        doctorId: userId, 
-        senderId: userId,
-        text 
-      });
-      await messageService.addMessage(selectedPatientId, userId, userId, text, file);
-      console.log('Doctor message sent successfully');
-      // Reload messages after sending
-      const msgs = await messageService.getMessages(selectedPatientId, 'doctor', userId);
-      console.log('Doctor reloaded messages:', msgs);
+      await messageService.sendMessage(userId, selectedPatient.userId, text, file);
+      const msgs = await messageService.getMessages(userId, selectedPatient.userId);
       setMessages(msgs);
     } catch (error) {
-      console.error('Doctor failed to send message:', error);
+      console.error('Failed to send message:', error);
     }
   };
-  
-  const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
   return (
     <>
       <Header language={language} setLanguage={setLanguage} translations={t} onLogout={onLogout} />
       <main className="container mx-auto p-4 md:p-8">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 h-full">
-            <div className="md:col-span-1 lg:col-span-1 bg-white p-4 rounded-xl shadow-md border border-slate-200">
-                <div className="flex items-center mb-4">
-                    <UserGroupIcon className="h-6 w-6 text-slate-500 mr-3" />
-                    <h2 className="text-lg font-semibold text-slate-700">{t.patientList}</h2>
-                </div>
-                <ul className="space-y-2">
-                    {patients.map(p => (
-                        <li key={p.id}>
-                            <button onClick={() => { setSelectedPatientId(p.id); setMessages([]); }} className={`w-full text-left flex items-center p-3 rounded-lg transition-colors ${selectedPatientId === p.id ? 'bg-indigo-100' : 'hover:bg-slate-100'}`}>
-                                <UserCircleIcon className="h-8 w-8 text-slate-400 mr-3"/>
-                                <div>
-                                    <p className="font-medium text-slate-800">{p.name}</p>
-                                    <p className={`text-sm ${p.status === 'Online' ? 'text-green-500' : 'text-slate-400'}`}>{p.status}</p>
-                                </div>
-                            </button>
-                        </li>
-                    ))}
-                </ul>
+          <div className="md:col-span-1 bg-white p-4 rounded-xl shadow-md border border-slate-200">
+            <div className="flex items-center mb-4">
+              <UserGroupIcon className="h-6 w-6 text-slate-500 mr-3" />
+              <h2 className="text-lg font-semibold text-slate-700">{t.patientList}</h2>
+              <span className="ml-auto bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded-full">{onlinePatients.length}</span>
             </div>
-            <div className="md:col-span-2 lg:col-span-3">
-                {selectedPatient ? (
-                      <Chat
-                        messages={messages}
-                        onSendMessage={handleSendMessage}
-                        placeholder={`Message ${selectedPatient.name}...`}
-                        contactName={selectedPatient.name}
-                        contactStatus={selectedPatient.status}
-                    />
-                ) : (
-                    <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full items-center justify-center min-h-[500px]">
-                        <ChatBubbleLeftRightIcon className="h-16 w-16 text-slate-300 mb-4" />
-                        <p className="text-slate-500">{t.selectPatient}</p>
-                    </div>
-                )}
-            </div>
+            {onlinePatients.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">No patients online</p>
+            ) : (
+              <ul className="space-y-2">
+                {onlinePatients.map(p => (
+                  <li key={p.userId}>
+                    <button
+                      onClick={() => { setSelectedPatient(p); setMessages([]); }}
+                      className={`w-full text-left flex items-center p-3 rounded-lg transition-colors ${selectedPatient?.userId === p.userId ? 'bg-indigo-100' : 'hover:bg-slate-100'}`}
+                    >
+                      <UserCircleIcon className="h-8 w-8 text-slate-400 mr-3" />
+                      <div>
+                        <p className="font-medium text-slate-800">{p.name}</p>
+                        <p className="text-sm text-green-500">● Online</p>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="md:col-span-2 lg:col-span-3">
+            {selectedPatient ? (
+              <Chat
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                placeholder={`Message ${selectedPatient.name}...`}
+                contactName={selectedPatient.name}
+                contactStatus="Online"
+              />
+            ) : (
+              <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full items-center justify-center min-h-[500px]">
+                <ChatBubbleLeftRightIcon className="h-16 w-16 text-slate-300 mb-4" />
+                <p className="text-slate-500">{t.selectPatient}</p>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </>

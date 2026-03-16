@@ -3,7 +3,7 @@ import { Header } from './Header';
 import { Chat, Message } from './Chat';
 import { DiagnosticCopilot } from './DiagnosticCopilot';
 import { SparklesIcon, ChatBubbleLeftRightIcon } from './IconComponents';
-import { messageService } from '../services/messageService';
+import { messageService, OnlineUser } from '../services/messageService';
 import { supabase } from '../services/supabase';
 
 interface PatientDashboardProps {
@@ -73,71 +73,68 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, us
   const [language, setLanguage] = useState<string>('en');
   const [activeTab, setActiveTab] = useState<'chat' | 'copilot'>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [doctorId, setDoctorId] = useState<string | null>(null);
-  const [doctorName, setDoctorName] = useState<string>('Doctor');
-
+  const [selectedDoctor, setSelectedDoctor] = useState<OnlineUser | null>(null);
+  const [onlineDoctors, setOnlineDoctors] = useState<OnlineUser[]>([]);
   const t = translations[language];
 
-  // Get the first doctor (in production, patient would select their doctor)
+  // Join presence and track as patient
   useEffect(() => {
-    const loadDoctor = async () => {
-      const { data, error } = await supabase
+    const init = async () => {
+      const { data } = await supabase
         .from('users')
-        .select('id, full_name, email')
-        .eq('role', 'doctor')
-        .limit(1);
+        .select('full_name, email')
+        .eq('id', userId)
+        .single();
 
-      if (error) {
-        console.error('Error loading doctor:', error);
-      } else if (data && data.length > 0) {
-        setDoctorId(data[0].id);
-        setDoctorName(data[0].full_name || data[0].email);
-      } else {
-        console.log('No doctors found. Please create a doctor account first.');
-      }
-    };
-    loadDoctor();
-  }, []);
+      const name = data?.full_name || data?.email || 'Patient';
 
-  // Load messages on mount
-  useEffect(() => {
-    const loadMessages = async () => {
-      const msgs = await messageService.getMessages(userId, 'patient', userId);
-      setMessages(msgs);
+      const unsub = messageService.joinPresence(userId, 'patient', name, (users) => {
+        const doctors = users.filter(u => u.role === 'doctor' && u.userId !== userId);
+        setOnlineDoctors(doctors);
+        if (!selectedDoctor && doctors.length > 0) {
+          setSelectedDoctor(doctors[0]);
+        }
+      });
+
+      return unsub;
     };
-    loadMessages();
+
+    let cleanup: (() => void) | undefined;
+    init().then(fn => { cleanup = fn; });
+    return () => { if (cleanup) cleanup(); };
   }, [userId]);
 
-  // Subscribe to message updates
+  // Load messages when doctor is selected
   useEffect(() => {
-    const unsubscribe = messageService.subscribeToMessages(userId, async () => {
-      const msgs = await messageService.getMessages(userId, 'patient', userId);
+    if (!selectedDoctor) return;
+    const load = async () => {
+      const msgs = await messageService.getMessages(userId, selectedDoctor.userId);
+      setMessages(msgs);
+    };
+    load();
+  }, [selectedDoctor, userId]);
+
+  // Subscribe to new messages from selected doctor only
+  useEffect(() => {
+    if (!selectedDoctor) return;
+    const unsub = messageService.subscribeToConversation(userId, selectedDoctor.userId, async () => {
+      const msgs = await messageService.getMessages(userId, selectedDoctor.userId);
       setMessages(msgs);
     });
-    return unsubscribe;
-  }, [userId]);
+    return unsub;
+  }, [selectedDoctor, userId]);
 
   const handleSendMessage = async (text: string, file?: File) => {
-    if (!doctorId) {
-      console.error('No doctor assigned');
+    if (!selectedDoctor) {
+      console.error('No doctor selected');
       return;
     }
-    
     try {
-      console.log('Patient sending message:', { 
-        patientId: userId, 
-        doctorId: doctorId, 
-        senderId: userId,
-        text 
-      });
-      await messageService.addMessage(userId, doctorId, userId, text, file);
-      console.log('Patient message sent successfully');
-      // Reload messages after sending
-      const msgs = await messageService.getMessages(userId, 'patient', userId);
-      console.log('Patient reloaded messages:', msgs);
+      await messageService.sendMessage(userId, selectedDoctor.userId, text, file);
+      const msgs = await messageService.getMessages(userId, selectedDoctor.userId);
       setMessages(msgs);
     } catch (error) {
-      console.error('Patient failed to send message:', error);
+      console.error('Failed to send message:', error);
     }
   };
 
@@ -168,19 +165,50 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({ onLogout, us
         
         {activeTab === 'chat' && (
             <div className="max-w-4xl mx-auto">
-                {!doctorId ? (
+                {onlineDoctors.length === 0 ? (
                     <div className="bg-white rounded-xl shadow-md border border-slate-200 p-8 text-center">
-                        <p className="text-slate-600 mb-4">No doctor assigned yet.</p>
-                        <p className="text-sm text-slate-500">Please ask your administrator to create a doctor account, or sign up as a doctor in another browser window.</p>
+                        <p className="text-slate-600 mb-2">No doctors are online right now.</p>
+                        <p className="text-sm text-slate-400">Please wait for a doctor to come online.</p>
                     </div>
                 ) : (
-                    <Chat 
-                        messages={messages}
-                        onSendMessage={handleSendMessage}
-                        placeholder={`Type your message to ${doctorName}...`}
-                        contactName={doctorName}
-                        contactStatus="Online"
-                    />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div className="bg-white p-4 rounded-xl shadow-md border border-slate-200">
+                            <h2 className="text-sm font-semibold text-slate-700 mb-3">Online Doctors</h2>
+                            <ul className="space-y-2">
+                                {onlineDoctors.map(d => (
+                                    <li key={d.userId}>
+                                        <button
+                                            onClick={() => { setSelectedDoctor(d); setMessages([]); }}
+                                            className={`w-full text-left flex items-center p-2 rounded-lg transition-colors ${selectedDoctor?.userId === d.userId ? 'bg-indigo-100' : 'hover:bg-slate-100'}`}
+                                        >
+                                            <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center mr-2 text-indigo-600 font-bold text-sm">
+                                                {d.name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-slate-800 text-sm">{d.name}</p>
+                                                <p className="text-xs text-green-500">● Online</p>
+                                            </div>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="md:col-span-3">
+                            {selectedDoctor ? (
+                                <Chat
+                                    messages={messages}
+                                    onSendMessage={handleSendMessage}
+                                    placeholder={`Type your message to ${selectedDoctor.name}...`}
+                                    contactName={selectedDoctor.name}
+                                    contactStatus="Online"
+                                />
+                            ) : (
+                                <div className="bg-white rounded-xl shadow-md border border-slate-200 flex items-center justify-center min-h-[500px]">
+                                    <p className="text-slate-400">Select a doctor to start chatting</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
         )}
